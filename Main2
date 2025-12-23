@@ -1,0 +1,24 @@
+#define LED 23
+#define BUTTON 35
+
+int Num = 1;
+bool pressed = false;
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(LED, OUTPUT);
+  pinMode(BUTTON, INPUT);
+}
+
+void loop() {
+  if (digitalRead(BUTTON) == LOW && !pressed) {
+    pressed = true;           
+    digitalWrite(LED, HIGH);
+    Serial.println(Num);
+    Num++;
+  }
+  if (digitalRead(BUTTON) == HIGH) {
+    pressed = false;
+    digitalWrite(LED, LOW);
+  }
+}
