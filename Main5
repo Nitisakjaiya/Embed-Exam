@@ -1,0 +1,111 @@
+#include <WiFi.h>
+#include <MQTT.h>
+
+const char ssid[] = "NiTi";
+const char pass[] = "444444444";
+
+const char mqtt_broker[] = "test.mosquitto.org";
+const char mqtt_topic[]  = "group18/embed";
+const char mqtt_client_id[] = "arduino_group18_motor"; 
+int MQTT_PORT = 1883;
+
+// --- กำหนดขา Pin ---
+#define BUTTON_PIN 23    // ปุ่มกดสลับโหมด
+#define LDR_PIN    34    // เซนเซอร์แสง (ต่อแบบ ADC)
+#define MOTOR_PIN  22    // ขาควบคุม Transistor ของมอเตอร์
+
+WiFiClient net;
+MQTTClient client;
+
+// --- ตัวแปรสถานะ ---
+bool isAuto = true;       // เริ่มต้นเป็นโหมดอัตโนมัติ (ตามโจทย์)
+bool lastButtonState = HIGH;
+unsigned long lastPublishTime = 0;
+
+// ================= MQTT CALLBACK =================
+void messageReceived(String &topic, String &payload) {
+  Serial.println("MQTT incoming: " + payload);
+
+  // 1. รับคำสั่งสลับโหมดจาก Dashboard
+  if (payload == "mode_auto") {
+    isAuto = true;
+  } else if (payload == "mode_manual") {
+    isAuto = false;
+  }
+
+  // 2. รับคำสั่งคุมมอเตอร์ (เฉพาะโหมด Manual เท่านั้น)
+  if (!isAuto) {
+    if (payload == "on") {
+      digitalWrite(MOTOR_PIN, HIGH);
+      Serial.println("Motor ON (Manual via MQTT)");
+    } else if (payload == "off") {
+      digitalWrite(MOTOR_PIN, LOW);
+      Serial.println("Motor OFF (Manual via MQTT)");
+    }
+  }
+}
+
+// ================= CONNECT =================
+void connect() {
+  Serial.print("Checking wifi...");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+  }
+  Serial.print("\nConnecting MQTT...");
+  while (!client.connect(mqtt_client_id)) {
+    delay(1000);
+  }
+  Serial.println("\nConnected!");
+  client.subscribe(mqtt_topic);
+}
+
+// ================= SETUP =================
+void setup() {
+  Serial.begin(9600);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(MOTOR_PIN, OUTPUT);
+  digitalWrite(MOTOR_PIN, LOW); // เริ่มต้นมอเตอร์หยุดหมุน (ตามโจทย์)
+
+  WiFi.begin(ssid, pass);
+  client.begin(mqtt_broker, MQTT_PORT, net);
+  client.onMessage(messageReceived);
+  connect();
+}
+
+// ================= LOOP =================
+void loop() {
+  client.loop();
+  if (!client.connected()) connect();
+
+  // ----- 1. การสลับโหมดด้วยปุ่มกด (Hardware) -----
+  bool currentButtonState = digitalRead(BUTTON_PIN);
+  if (currentButtonState != lastButtonState && currentButtonState == LOW) {
+    isAuto = !isAuto; // สลับโหมด
+    Serial.print("Mode switched to: ");
+    Serial.println(isAuto ? "AUTO" : "MANUAL");
+    delay(200); // Debounce
+  }
+  lastButtonState = currentButtonState;
+
+  // ----- 2. ลอจิกการทำงาน -----
+  int ldrValue = analogRead(LDR_PIN);
+  // แปลงค่า ESP32 (0-4095) เป็น 0-1023 ตามโจทย์
+  int mappedLDR = map(ldrValue, 0, 4095, 0, 1023);
+
+  if (isAuto) {
+    // โหมด AUTO: แสง > 700 มอเตอร์หมุน, แสง <= 700 มอเตอร์หยุด
+    if (mappedLDR > 700) {
+      digitalWrite(MOTOR_PIN, HIGH);
+    } else {
+      digitalWrite(MOTOR_PIN, LOW);
+    }
+  }
+
+  // ----- 3. ส่งข้อมูลไป MQTT Dashboard (ทุก 2 วินาที) -----
+  if (millis() - lastPublishTime > 2000) {
+    client.publish(mqtt_topic + String("/ldr"), String(mappedLDR));
+    client.publish(mqtt_topic + String("/mode"), isAuto ? "Auto" : "Manual");
+    client.publish(mqtt_topic + String("/motor"), digitalRead(MOTOR_PIN) == HIGH ? "ทำงาน" : "หยุด");
+    lastPublishTime = millis();
+  }
+}
