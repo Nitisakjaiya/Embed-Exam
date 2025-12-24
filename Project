@@ -2,30 +2,31 @@
 #include <MQTT.h>
 #include <ESP32Servo.h>
 
-// ===== WiFi =====
+// ================= WiFi =================
 const char ssid[] = "NiTi";
 const char pass[] = "444444444";
 
-// ===== MQTT =====
+// ================= MQTT =================
 const char mqtt_broker[] = "test.mosquitto.org";
-const char mqtt_topic[]  = "group18/embed";s
+const char mqtt_topic[]  = "group18/embed";
 const char mqtt_client_id[] = "arduino_group18_servo";
 int MQTT_PORT = 1883;
 
-// ===== Servo =====
+// ================= PIN =================
 #define SERVO_PIN 18
+#define LED_PIN   22
+
+// ================= OBJECT =================
+WiFiClient net;
+MQTTClient client;
 Servo servo;
 
-// ===== ร้านอาหาร =====
+// ================= ร้านอาหาร =================
 String restaurants[] = {
   "Pizza", "KFC", "Shabu", "Somtum",
   "Ramen", "BBQ", "Burger", "Cafe"
 };
 const int shopCount = 8;
-
-// ===== MQTT =====
-WiFiClient net;
-MQTTClient client;
 
 // ================= MQTT CALLBACK =================
 void messageReceived(String &topic, String &payload) {
@@ -33,27 +34,21 @@ void messageReceived(String &topic, String &payload) {
 
   if (payload == "spin") {
 
+    digitalWrite(LED_PIN, HIGH);             // 🔴 LED ติด
     client.publish(mqtt_topic, "Spinning...");
 
     int choice = random(0, shopCount);
-    int stepAngle = 180 / shopCount;
-    int targetAngle = (choice * stepAngle) + (stepAngle / 2);
+    int targetAngle = choice * (180 / shopCount);
 
-    // หมุนหลายรอบก่อน
-    for (int round = 0; round < 3; round++) {
-      for (int i = 0; i <= 180; i += 6) {
-        servo.write(i);
-        delay(10);
-      }
-    }
-
-    // ชะลอแล้วหยุด
-    for (int i = 180; i >= targetAngle; i -= 2) {
+    // หมุนแบบเร็ว → ช้า
+    for (int i = 0; i <= targetAngle; i += 4) {
       servo.write(i);
-      delay(30);
+      delay(25);
     }
 
+    digitalWrite(LED_PIN, LOW);              // ❌ LED ดับ
     client.publish(mqtt_topic, "Result: " + restaurants[choice]);
+
     Serial.println("Selected: " + restaurants[choice]);
   }
 }
@@ -80,6 +75,9 @@ void connect() {
 void setup() {
   Serial.begin(9600);
 
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+
   servo.attach(SERVO_PIN);
   servo.write(0);
 
@@ -88,7 +86,7 @@ void setup() {
   client.begin(mqtt_broker, MQTT_PORT, net);
   client.onMessage(messageReceived);
 
-  randomSeed(analogRead(0));
+  randomSeed(millis());
   connect();
 }
 
@@ -101,3 +99,4 @@ void loop() {
     connect();
   }
 }
+
