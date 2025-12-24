@@ -32,24 +32,34 @@ const int shopCount = 8;
 void messageReceived(String &topic, String &payload) {
   Serial.println("incoming: " + topic + " - " + payload);
 
+  // ====== SPIN ======
   if (payload == "spin") {
 
-    digitalWrite(LED_PIN, HIGH);             // 🔴 LED ติด
+    digitalWrite(LED_PIN, HIGH);          // LED ติด
     client.publish(mqtt_topic, "Spinning...");
 
     int choice = random(0, shopCount);
     int targetAngle = choice * (180 / shopCount);
 
-    // หมุนแบบเร็ว → ช้า
-    for (int i = 0; i <= targetAngle; i += 4) {
+    for (int i = 0; i <= targetAngle; i += 3) {
       servo.write(i);
-      delay(25);
+      delay(20);
     }
 
-    digitalWrite(LED_PIN, LOW);              // ❌ LED ดับ
+    digitalWrite(LED_PIN, LOW);           // LED ดับ
     client.publish(mqtt_topic, "Result: " + restaurants[choice]);
 
     Serial.println("Selected: " + restaurants[choice]);
+  }
+
+  // ====== RESET ======
+  else if (payload == "reset") {
+
+    digitalWrite(LED_PIN, LOW);
+    servo.write(0);                       // กลับตำแหน่งเริ่มต้น
+    client.publish(mqtt_topic, "Reset complete");
+
+    Serial.println("Servo reset to 0");
   }
 }
 
@@ -79,7 +89,7 @@ void setup() {
   digitalWrite(LED_PIN, LOW);
 
   servo.attach(SERVO_PIN);
-  servo.write(0);
+  servo.write(0);                         // ตำแหน่งเริ่มต้น
 
   WiFi.begin(ssid, pass);
 
@@ -99,4 +109,3 @@ void loop() {
     connect();
   }
 }
-
